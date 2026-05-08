@@ -33,7 +33,7 @@ class NanaBananaProNode:
             "required": {
                 "prompt": ("STRING", {"multiline": True, "default": ""}),
                 "aspect_ratio": (["9:16", "16:9", "1:1", "4:3", "3:4"],),
-                "resolution": (["4K", "2K", "1080p", "720p"],),
+                "resolution": (["4K", "2K", "1K"],),
             },
             "optional": {
                 "image_1":  ("IMAGE",),
