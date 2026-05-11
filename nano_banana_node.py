@@ -102,14 +102,14 @@ class NanaBananaProNode:
 
         client = genai.Client(api_key=api_key)
 
-        contents = [prompt] + pil_images
+        full_prompt = f"{prompt}\n\nOutput image aspect ratio: {ar}, resolution: {resolution}"
+        contents = [full_prompt] + pil_images
 
         response = client.models.generate_content(
             model="gemini-3-pro-image-preview",
             contents=contents,
             config=types.GenerateContentConfig(
                 response_modalities=["TEXT", "IMAGE"],
-                response_format={"image": {"aspect_ratio": ar, "image_size": resolution}},
             ),
         )
 
