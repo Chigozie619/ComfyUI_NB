@@ -32,7 +32,7 @@ class NanaBananaProNode:
         return {
             "required": {
                 "prompt": ("STRING", {"multiline": True, "default": ""}),
-                "aspect_ratio": (["9:16", "16:9", "1:1", "4:3", "3:4"],),
+                "aspect_ratio": (["match_input_image", "21:9", "9:16", "16:9", "4:5", "5:4", "4:3", "3:4", "3:2", "2:3", "1:1"],),
                 "resolution": (["4K", "2K", "1K"],),
             },
             "optional": {
