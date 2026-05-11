@@ -1,29 +1,42 @@
 import os
-import io
 import numpy as np
 import torch
 from PIL import Image
 
 try:
-    import replicate
+    from google import genai
+    from google.genai import types
 except ImportError:
-    raise ImportError("replicate package not found. Run: pip install replicate")
+    raise ImportError("google-genai package not found. Run: pip install google-genai")
 
 
-def _tensor_to_bytesio(tensor):
-    """ComfyUI IMAGE tensor [B, H, W, C] float32 0-1 → PNG BytesIO."""
+_KNOWN_RATIOS = [
+    "1:1", "1:4", "1:8", "2:3", "3:2", "3:4",
+    "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9",
+]
+
+
+def _tensor_to_pil(tensor):
+    """ComfyUI IMAGE tensor [B, H, W, C] float32 0-1 → PIL Image."""
     arr = (tensor[0].numpy() * 255).clip(0, 255).astype(np.uint8)
-    buf = io.BytesIO()
-    Image.fromarray(arr).save(buf, format="PNG")
-    buf.seek(0)
-    return buf
+    return Image.fromarray(arr)
 
 
-def _bytes_to_tensor(image_bytes):
-    """Raw image bytes → ComfyUI IMAGE tensor [1, H, W, C] float32 0-1."""
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    arr = np.array(img).astype(np.float32) / 255.0
+def _pil_to_tensor(img):
+    """PIL Image → ComfyUI IMAGE tensor [1, H, W, C] float32 0-1."""
+    arr = np.array(img.convert("RGB")).astype(np.float32) / 255.0
     return torch.from_numpy(arr).unsqueeze(0)
+
+
+def _closest_aspect_ratio(pil_image):
+    """Return the closest known ratio string for a PIL image's dimensions."""
+    w, h = pil_image.size
+    target = w / h
+    best = min(
+        _KNOWN_RATIOS,
+        key=lambda r: abs(int(r.split(":")[0]) / int(r.split(":")[1]) - target),
+    )
+    return best
 
 
 class NanaBananaProNode:
@@ -32,7 +45,7 @@ class NanaBananaProNode:
         return {
             "required": {
                 "prompt": ("STRING", {"multiline": True, "default": ""}),
-                "aspect_ratio": (["match_input_image", "21:9", "9:16", "16:9", "4:5", "5:4", "4:3", "3:4", "3:2", "2:3", "1:1"],),
+                "aspect_ratio": (["match_input_image", "21:9", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "3:2", "2:3", "1:1"],),
                 "resolution": (["4K", "2K", "1K"],),
             },
             "optional": {
@@ -70,32 +83,42 @@ class NanaBananaProNode:
         image_9=None,
         image_10=None,
     ):
-        api_key = os.environ.get("REPLICATE_API_TOKEN")
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError(
-                "REPLICATE_API_TOKEN environment variable is not set."
+                "GEMINI_API_KEY (or GOOGLE_API_KEY) environment variable is not set."
             )
 
         raw_images = [
             image_1, image_2, image_3, image_4, image_5,
             image_6, image_7, image_8, image_9, image_10,
         ]
-        image_input = [
-            _tensor_to_bytesio(img) for img in raw_images if img is not None
-        ]
+        pil_images = [_tensor_to_pil(img) for img in raw_images if img is not None]
 
-        api_input = {
-            "prompt": prompt,
-            "aspect_ratio": aspect_ratio,
-            "resolution": resolution,
-        }
-        if image_input:
-            api_input["image_input"] = image_input
+        if aspect_ratio == "match_input_image":
+            ar = _closest_aspect_ratio(pil_images[0]) if pil_images else "1:1"
+        else:
+            ar = aspect_ratio
 
-        output = replicate.run("google/nano-banana-pro", input=api_input)
-        image_bytes = output.read()
+        client = genai.Client(api_key=api_key)
 
-        return (_bytes_to_tensor(image_bytes), prompt)
+        contents = [prompt] + pil_images
+
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-image-preview",
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
+                response_format={"image": {"aspect_ratio": ar, "image_size": resolution}},
+            ),
+        )
+
+        for part in response.parts:
+            img = part.as_image()
+            if img is not None:
+                return (_pil_to_tensor(img), prompt)
+
+        raise RuntimeError("Gemini API returned no image in the response.")
 
 
 NODE_CLASS_MAPPINGS = {
