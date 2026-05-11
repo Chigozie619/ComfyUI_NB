@@ -126,5 +126,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "NanaBananaPro": "Nana Banana Pro",
+    "NanaBananaPro": "Bloom Nana Banana Pro",
 }
