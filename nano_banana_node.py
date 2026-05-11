@@ -1,3 +1,4 @@
+import io
 import os
 import numpy as np
 import torch
@@ -113,10 +114,10 @@ class NanaBananaProNode:
             ),
         )
 
-        for part in response.parts:
-            img = part.as_image()
-            if img is not None:
-                return (_pil_to_tensor(img), prompt)
+        for part in response.candidates[0].content.parts:
+            if part.inline_data is not None:
+                pil_img = Image.open(io.BytesIO(part.inline_data.data)).convert("RGB")
+                return (_pil_to_tensor(pil_img), prompt)
 
         raise RuntimeError("Gemini API returned no image in the response.")
 
